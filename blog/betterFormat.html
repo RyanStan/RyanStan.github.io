@@ -98,7 +98,7 @@ img {
 <h3>01/13/2021</h3>
 
 <h2> Introduction </h2>
-<p> <b>The purpose of this post is to explore how the Linux Kernel implements User mode and Kernel mode privileges on the Intel x86 family of processors.  </b>  When I first learned about this topic, it was not immediately clear how paging and segmentation worked together when it came to privileges.  In fact, I incorrectly thought that segmentation was entirely disabled by the Linux Kernel, which is a somewhat true (yet misleading) statement commonly found online.  If you haven’t heard about protection rings or the concept of User mode and Kernel mode, the next paragraph should provide enough of an intro that you’ll be able to understand the rest of this post (although I’d also recommend reading this article if you have time).  </p>
+<p> <b>The purpose of this post is to explore how the Linux Kernel implements User mode and Kernel mode privileges on the Intel x86 family of processors.  </b>  When I first learned about this topic, it was not immediately clear how paging and segmentation worked together when it came to privileges.  In fact, I incorrectly thought that segmentation was entirely disabled by the Linux Kernel, which is a somewhat true (yet misleading) statement commonly found online.  If you haven’t heard about protection rings or the concept of User mode and Kernel mode, the next paragraph should provide enough of an intro that you’ll be able to understand the rest of this post (although I’d also recommend reading <a href="https://blog.codinghorror.com/understanding-user-and-kernel-mode/">this article</a> if you have time).  </p>
 
 <div class="sideNote">
     <p>
@@ -135,7 +135,7 @@ img {
 
 <p>A logical address consists of two parts: a segment selector and an offset, which we see near the bottom of the above figure.</p>
 
-<p>The first part of the logical address, the segment selector, is used to determine which segment a given logical address is in.   In both 32-bit and 64-bit architectures, the segment selector is 16-bits.  This indexes into either the <b>Global Descriptor Table (GDT)</b> or a <b>>Local Descriptor Table (LDT)</b>.  Both the GDT and the LDT contain <b>segment descriptors</b> which describe different available segments of memory (remember, a segment is just a region of memory in the linear address space).  The GDT is global to all processes, while the LDT is local to a single process and is used in the case where that process needs additional segments.  However, since most processes don’t make use of their own LDT, the Kernel assigns processes a shared LDT by default.  To determine which table a given segment is in, the selector also contains a field called the Table Indicator (TI).  This field specifies whether the segment descriptor is included in the GDT (TI = 0) or in the LDT (TI = 1).</p>
+<p>The first part of the logical address, the segment selector, is used to determine which segment a given logical address is in.   In both 32-bit and 64-bit architectures, the segment selector is 16-bits.  This indexes into either the <b>Global Descriptor Table (GDT)</b> or a <b>Local Descriptor Table (LDT)</b>.  Both the GDT and the LDT contain <b>segment descriptors</b> which describe different available segments of memory (remember, a segment is just a region of memory in the linear address space).  The GDT is global to all processes, while the LDT is local to a single process and is used in the case where that process needs additional segments.  However, since most processes don’t make use of their own LDT, the Kernel assigns processes a shared LDT by default.  To determine which table a given segment is in, the selector also contains a field called the Table Indicator (TI).  This field specifies whether the segment descriptor is included in the GDT (TI = 0) or in the LDT (TI = 1).</p>
 
 <div class="sideNote">
     <p>The code that performs the check of the TI field is in the file <a href="https://elixir.bootlin.com/linux/v5.8/source/arch/x86/events/core.c#L2459">/arch/x86/events/core.c</a>.  </p>
@@ -158,12 +158,12 @@ img {
 
 <p>Here’s a short summary of the logical address translation process performed by the segmentation unit.</p>
 <ol>
-    <li>The segmentation unit looks at the TI of a given segment selector and determines whether the desired segment descriptor is located in the GDT or LDT.  </li>
-    <li>The desired segment descriptor is then addressed by multiplying the index field of the segment selector by 8 and adding this to the base address of the relevant descriptor table.</li>
-    <li>The offset field of the logical address is added to the linear address of the first byte of the segment described by the specified segment descriptor.</li>
+    <li>The segmentation unit looks at the TI of a given segment selector and determines whether the desired segment descriptor is located in the GDT or LDT  </li>
+    <li>The desired segment descriptor is then addressed by multiplying the index field of the segment selector by 8 and adding this to the base address of the relevant descriptor table</li>
+    <li>The offset field of the logical address is added to the linear address of the first byte of the segment described by the specified segment descriptor</li>
 </ol>
 
-<p>One last point I want to touch on before diving into privileges and segmentation specifically is that there are a set of registers (in the Intel x86 family of processors) called segmentation registers.  These hold predetermined segment selectors so that programs can more easily access frequently used segments.  These are some important segmentation registers:</p>
+<p>One last point I want to touch on before diving into privileges and segmentation specifically is that there are a set of registers (in the Intel x86 family of processors) called <b>segmentation registers</b>.  These hold predetermined segment selectors so that programs can more easily access frequently used segments.  These are some important segmentation registers:</p>
 
 <ul>
     <li>the code segment register which points to a segment containing the currently executing process’s instructions (CS)</li>
@@ -177,7 +177,7 @@ img {
 
 <p>This is great, segmentation gives the Linux Kernel a way of enforcing privilege checks.  For a program to access a segment, the program must have a higher or equal CPL than that segment’s DPL.  However, I want to run through the following scenario which describes why we need one more privilege check in addition to the DPL and CPL check.  This scenario comes from the <a href="https://openwares.net/2019/02/09/cpl-vs-dpl-vs-rpl/">this</a> article which I highly recommend reading [4] .  </p>
 
-<p>Imagine a User mode program that makes a system call.  This system call takes a memory address as an argument and writes to that address.  Let’s imagine that the User Mode program passes in the address of a kernel data structure to the system call.  Normally, the User Mode process should not be able to write directly to this kernel data structure, even through a system call.  However, with only DPL and CPL checks, the User Mode program would be able to indirectly access this data structure since system calls run in Kernel mode.  To avoid this error and security issue, there is a privilege associated with each segment selector called the Requestor Privilege Level.  This is a field within the segment selector of a logical address.</p>
+<p>Imagine a User mode program that makes a system call.  This system call takes a memory address as an argument and writes to that address.  Let’s imagine that the User mode program passes in the address of a kernel data structure to the system call.  Normally, the User mode process should not be able to write directly to this kernel data structure, even through a system call.  However, with only DPL and CPL checks, the User mode program would be able to indirectly access this data structure since system calls run in Kernel mode.  To avoid this error and security issue, there is a privilege associated with each segment selector called the Requestor Privilege Level.  This is a field within the segment selector of a logical address.</p>
 
 <p>To summarize, access to a given segment is authorized only if both the following checks are successful:</p>
 <ul>
@@ -207,21 +207,22 @@ img {
 
 <p>Paging is another memory addressing technique that is preferred over segmentation by the Kernel.  Inside the processor’s memory management unit is the paging unit.  This unit handles the translation of linear addresses to physical addresses.  </p>
 
-<p>The foundational concept in paging is a page.  A page is a grouped fixed-length interval of linear addresses.  The paging unit sees RAM as partitioned into fixed-length page frames.  Each of these page frames can contain a single page of data.  Essentially, a page is just a block of data and a page frame is a place to store this block of data.  This allows a page to be stored in a page frame in RAM, then evacuated from RAM and saved to a disk, and later reloaded into a different page frame in RAM.  This is a foundational concept behind virtual memory (a topic that will be explored further in future posts).</p>
+<p>The foundational concept in paging is a page.  A page is a grouped fixed-length interval of linear addresses.  The paging unit sees RAM as partitioned into fixed-length page frames.  Each of these page frames can contain a single page of data.  Essentially, a page is just a block of data and a page frame is a place to store this block of data.  This allows a page to be stored in a page frame in RAM, then evacuated and saved to disk, and later reloaded into a different page frame in RAM.  This is a foundational concept behind virtual memory (a topic that will be explored more in future posts).</p>
 
 <p>Here is an image which shows an example of a process’s linear address space.  </p>
 
 <img src="images/image009.png">
 
-<p>On the right we see the physical memory (RAM).  Each rectangle within the process’s linear address space on the left is a page.  Some of these are mapped to a page frame in physical memory (cached) and others are not and may be on disk instead (uncached).  Pages that aren’t backed by disk or RAM are unallocated.</p>
+<p>On the right we see the physical memory (RAM).  Each rectangle on the right is a page frame, or a place where a page can be stored.  On the left we see a process's linear address space.  Each rectangle within the process’s linear address space is a page.  Some of these pages are mapped to a page frame in physical memory (cached) and others are not and may be on disk instead (uncached).  Pages that aren’t backed by disk or RAM are unallocated.</p>
 
 <p>To translate a linear address in a process’s address space to its location in physical memory, the Kernel uses a series of data structures stored in memory.  These data structures are referred to as translation tables, or page tables.  The Linux Kernel configures Intel x86 processors to use a four-level paging scheme, which means that we have four layers of these translation tables.  </p>
 
 <p>Let’s look at how a linear address is split up and how these tables work.</p>
 
 <img src="images/image010.png">
+<p>[5]</p>
 
-<p>Each process has its own set of page tables which are stored in memory.  The first layer of this paging process is the Page Global Directory (PGD) data structure.  Since 8 bits of a linear address are dedicated as an index into that process’s PGD, we know that the process’s PGD has 2^8, or 256 entries.  Each entry in a PGD points to a page frame in memory containing a Page Upper Directory (PUD).  Each entry in a PUD (of which there are 256) points to a page frame containing a Page Middle Directory (PMD).  Each PMD also has 256 entries, each of which point to a Page Table.  A Page Table also has 256 entries.  Instead of pointing to another layer of translation tables, each entry in a Page Table contains the physical address of the page frame containing the page corresponding to our linear address.   </p>
+<p>Each process has its own set of translation tables which are stored in memory.  The first layer of this paging process is the Page Global Directory (PGD) data structure.  Since 8 bits of a linear address are dedicated as an index into that process’s PGD, we know that the process’s PGD has 2^8, or 256 entries.  Each entry in a PGD points to a page frame in memory containing a Page Upper Directory (PUD).  Each entry in a PUD (of which there are 256) points to a page frame containing a Page Middle Directory (PMD).  Each PMD also has 256 entries, each of which point to a Page Table.  A Page Table also has 256 entries.  Instead of pointing to another layer of translation tables, each entry in a Page Table contains the physical address of the page frame containing the page corresponding to our linear address.   </p>
 
 <div class="sideNote">
     <p>For those interested in seeing things directly in Kernel code, let’s look at the struct mm_struct, which contains the entry point for a process’s translation tables.  </p>
@@ -259,6 +260,9 @@ img {
 </ul>
 
 <p>Segmentation and paging work together to provide protection in the Linux Kernel.  Access to a page will only be allowed if the segmentation privilege checks pass and then the paging privilege check passes.  </p>
+
+<h2>End Note</h2>
+<p>I hope you enjoyed this article!  As this is my first post, I'm looking for and would really appreciate any feedback you might have.  Specifically, I'm curious about what you thought about the "flow" of the article.  Did topics transition together smoothly?  Or was it a bit clunky?  Were some topics not explained enough?  Please shoot me an email (ryanstan@vt.edu) with any feedback you have!</p>
 
 <h2>References</h2>
 
