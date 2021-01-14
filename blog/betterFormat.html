@@ -1,0 +1,273 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html  PUBLIC '-//W3C//DTD XHTML 1.0 Strict//EN'  'http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd'><html xmlns="http://www.w3.org/1999/xhtml"><head>
+<meta content="text/html; charset=UTF-8" http-equiv="Content-Type"/> 
+<title>Privileges, Paging, and Segmentation in the Linux Kernel</title>
+<link href="index.rss" rel="alternate" title="RSS" type="application/rss+xml"/> 
+<style type="text/css">
+a:link { color: #293145; border-bottom: solid thin #293145; }
+a:visited { color: #666; border-bottom: dotted thin #666; }
+a:hover { color: #666; border-bottom: dotted thin #666; }
+a:active { color: #fff; border-bottom: none; }
+a { text-decoration: none; }
+
+body {
+    margin-top: 50px;
+    margin-bottom: 20px;
+    margin-left: auto;
+    margin-right: auto;
+    min-width: 40em;
+    max-width: 750px;
+    font-family: Georgia, Cambria, 'Times New Roman', Times, serif;
+    font-size: 20px;
+    line-height: 1.4;
+}
+
+h2, h3, .heading, .name {
+    color: #293145;
+    font-family: Arial, sans-serif;
+}
+
+.heading, .name {
+    margin: 0;
+    text-align: right;
+}
+
+.name {
+    font-size: 250%;
+    font-weight: bold;
+}
+
+.me {
+    font-weight: bold;
+    font-style: inherit;
+}
+
+.bibliography {
+    margin-left: 2em;
+    text-indent: -2em;
+}
+
+.sideNote {
+    background-color: #d2d6fa;
+    
+    border-radius: 15px;
+    border-style: solid;
+    border-width: 5px;
+    border-color: black;
+    
+    box-shadow: 5px 5px rgba(0, 26, 98, 0.4),
+              10px 10px rgba(0, 26, 98, 0.3),
+              15px 15px rgba(0, 26, 98, 0.2),
+              20px 20px rgba(0, 26, 98, 0.1),
+              25px 25px rgba(0, 26, 98, 0.05);
+
+}
+
+.sideNote p {
+    padding-left: 1em;
+    padding-right: 1em;
+}
+
+img {
+    max-width: 90%;
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.citation {
+    list-style-type: none;
+}
+
+</style>
+
+<!-- enable syntax highlighting of go snippets -->
+<script src="prism.js">/* empty */</script>
+<link href="prism.css" rel="stylesheet"/>
+</head>
+ 
+<body>
+
+<div style="float: left; padding-top: 10px; padding-bottom: 10px;">
+<p class="name">Privileges, Paging, and Segmentation in the Linux Kernel</p>
+<p class="heading"><a href="index.html">home</a>
+</div>
+<br clear="all"/>
+</div>
+<div style="padding: 10px;">
+
+<h3>01/13/2021</h3>
+
+<h2> Introduction </h2>
+<p> <b>The purpose of this post is to explore how the Linux Kernel implements User mode and Kernel mode privileges on the Intel x86 family of processors.  </b>  When I first learned about this topic, it was not immediately clear how paging and segmentation worked together when it came to privileges.  In fact, I incorrectly thought that segmentation was entirely disabled by the Linux Kernel, which is a somewhat true (yet misleading) statement commonly found online.  If you haven’t heard about protection rings or the concept of User mode and Kernel mode, the next paragraph should provide enough of an intro that you’ll be able to understand the rest of this post (although I’d also recommend reading this article if you have time).  </p>
+
+<div class="sideNote">
+    <p>
+        <b>Quick Summary of User Mode vs Kernel Mode:  </b>
+        One of the most important tasks of the Linux Kernel is to ensure that user processes (e.g. a Python script) do not overstep their boundaries.  To maintain a secure system, the Kernel must make some restrictions on user processes.
+    </p>    
+    <ul>
+        <li>User processes should not have the ability to directly access the underlying hardware</li>
+        <li>User processes should not be able to access all possible memory addresses</li>
+        <li>User processes should not be able to access Kernel code or Kernel data structures</li>
+    </ul>
+    <p>The Linux Kernel implements these restrictions by maintaining two different modes in which processes can run, User mode or Kernel mode.  In User mode, the above restrictions apply.  However, in Kernel mode, these restrictions do not apply.  A process in Kernel mode can access any memory address and execute any CPU instruction.  Therefore, it can also access Kernel code and Kernel data structures.</p>
+    
+</div>
+
+<p>To understand how privileges are implemented in the Linux Kernel, you have to understand the basics of segmentation and paging. Both of these are memory addressing techniques implemented via hardware (the <a href="https://en.wikipedia.org/wiki/Memory_management_unit">memory management unit</a> , or MMU) and software (the operating system).  First, I’ll cover the basics of segmentation and its relevance to privileges.  Then I’ll move to the basics of paging.</p>
+
+<p>Before diving in, I want to emphasize the fact that we will discuss three different types of memory addresses in the following sections.  Logical addresses, linear addresses, and physical addresses.  Logical addresses are what appear in machine level instructions and in code.  The segmentation unit (a circuit within the MMU) converts these to linear addresses, which are used in paging.  The paging unit (also a circuit within the MMU) then converts these to physical addresses, which end up as the electrical inputs to the address pins of the memory controller.</p>
+
+<img src="images/image001.png">
+
+<p>I should also note that most of the research I’ve done into this topic was guided by the book <i>Understanding the Linux Kernel, 3rd Edition, by Daniel P. Bovet and Marco Cesati</i> [1].  If you want a more in depth look into these topics, I highly recommend reading this book, specifically chapter 2 (memory addressing).</p>
+
+<h2>Segmentation</h2>
+
+<p>Intel first developed segmentation in the 8086 microprocessor (1976)  [2].  The goal of segmentation was to ensure that developers split their programs into logical pieces (e.g. functions and global data).  Segmentation splits the entire range of linear memory addresses into different segments.</p>
+
+<img src="images/image002.png">
+
+<p>The segmentation unit, a circuit within a processor’s memory management unit, handles the task of translating a <b>logical address</b> to a <b>linear address</b>.  The logical address is generated by the CPU and is what our program works with.  The linear address is what the paging unit takes as input (more on this later).  Here is a visual which describes the translation of logical to linear addresses. </p>
+
+<img src="images/image003.png">
+<p>[3]</p>
+
+<p>A logical address consists of two parts: a segment selector and an offset, which we see near the bottom of the above figure.</p>
+
+<p>The first part of the logical address, the segment selector, is used to determine which segment a given logical address is in.   In both 32-bit and 64-bit architectures, the segment selector is 16-bits.  This indexes into either the <b>Global Descriptor Table (GDT)</b> or a <b>>Local Descriptor Table (LDT)</b>.  Both the GDT and the LDT contain <b>segment descriptors</b> which describe different available segments of memory (remember, a segment is just a region of memory in the linear address space).  The GDT is global to all processes, while the LDT is local to a single process and is used in the case where that process needs additional segments.  However, since most processes don’t make use of their own LDT, the Kernel assigns processes a shared LDT by default.  To determine which table a given segment is in, the selector also contains a field called the Table Indicator (TI).  This field specifies whether the segment descriptor is included in the GDT (TI = 0) or in the LDT (TI = 1).</p>
+
+<div class="sideNote">
+    <p>The code that performs the check of the TI field is in the file <a href="https://elixir.bootlin.com/linux/v5.8/source/arch/x86/events/core.c#L2459">/arch/x86/events/core.c</a>.  </p>
+    <img src="images/image004.png">
+    <p>The if statement on line 2459 is where this check occurs.  As with most macros regarding segmentation, ‘SEGMENT_TI_MASK’ and ‘SEGMENT_LDT’ are defined in the file <a href="https://elixir.bootlin.com/linux/v5.8/source/arch/x86/include/asm/segment.h#L50">/arch/x86/include/asm/segment.h</a>.</p>
+    <img src="images/image005.png" style="padding-bottom: 1em;">
+</div>
+
+<p>Here are a few important fields that a given segment descriptor will contain:</p>
+<ul>
+    <li>The linear address of the first byte of the segment</li>
+    <li>The offset of the last memory address in the segment</li>
+    <li><b>The Descriptor Privilege Level (DPL)</b> of the segment.  This is the minimum CPU privilege level required for accessing the segment</li>
+    <li>The type of the segment.  This describes the type of data stored in a segment.  It can be a code segment, a data segment, something called a task state segment, or a Local Descriptor Table segment</li>
+</ul>
+
+<p>The segment descriptor format is defined in the file <a href="https://elixir.bootlin.com/linux/v5.8/source/arch/x86/include/asm/desc_defs.h#L19">/arch/x86/include/asm/desc_defs.h</a>.</p>
+
+<img src="images/image006.png">
+
+<p>Here’s a short summary of the logical address translation process performed by the segmentation unit.</p>
+<ol>
+    <li>The segmentation unit looks at the TI of a given segment selector and determines whether the desired segment descriptor is located in the GDT or LDT.  </li>
+    <li>The desired segment descriptor is then addressed by multiplying the index field of the segment selector by 8 and adding this to the base address of the relevant descriptor table.</li>
+    <li>The offset field of the logical address is added to the linear address of the first byte of the segment described by the specified segment descriptor.</li>
+</ol>
+
+<p>One last point I want to touch on before diving into privileges and segmentation specifically is that there are a set of registers (in the Intel x86 family of processors) called segmentation registers.  These hold predetermined segment selectors so that programs can more easily access frequently used segments.  These are some important segmentation registers:</p>
+
+<ul>
+    <li>the code segment register which points to a segment containing the currently executing process’s instructions (CS)</li>
+    <li>the stack segment register which points to the segment containing the currently executing process’s stack (SS)</li>
+    <li>the data segment register which contains global and static data for the currently executing process (DS)</li>
+</ul>
+
+<p>Now I want to focus in on privileges and segmentation. </p>
+
+<p>I’ve already touched on one important piece, Descriptor Privilege Levels.  This is a field associated with each segment that describes the minimum CPU privilege level that is required to access the segment.  The CPU’s current privilege level is stored in the code segment register, which points to the segment containing the currently executing program’s code.  This register contains a 2-bit field which specifies the Current Privilege Level (CPL) of the CPU.  Zero is the highest privilege level (Kernel Mode) while 3 is the lowest privilege level (User Mode).</p>
+
+<p>This is great, segmentation gives the Linux Kernel a way of enforcing privilege checks.  For a program to access a segment, the program must have a higher or equal CPL than that segment’s DPL.  However, I want to run through the following scenario which describes why we need one more privilege check in addition to the DPL and CPL check.  This scenario comes from the <a href="https://openwares.net/2019/02/09/cpl-vs-dpl-vs-rpl/">this</a> article which I highly recommend reading [4] .  </p>
+
+<p>Imagine a User mode program that makes a system call.  This system call takes a memory address as an argument and writes to that address.  Let’s imagine that the User Mode program passes in the address of a kernel data structure to the system call.  Normally, the User Mode process should not be able to write directly to this kernel data structure, even through a system call.  However, with only DPL and CPL checks, the User Mode program would be able to indirectly access this data structure since system calls run in Kernel mode.  To avoid this error and security issue, there is a privilege associated with each segment selector called the Requestor Privilege Level.  This is a field within the segment selector of a logical address.</p>
+
+<p>To summarize, access to a given segment is authorized only if both the following checks are successful:</p>
+<ul>
+    <li>CPL <= DPL</li>
+    <li>RPL <= DPL</li>
+</ul>
+
+<h2>Minimal Use of Segmentation in the Linux Kernel</h2>
+
+<p>It turns out that the Linux Kernel doesn’t like to use segmentation that much.  The Linux Kernel prefers paging over segmentation as memory management turns out to be easier when all processes share the same set of linear addresses.  Paging is also much more portable across processors than segmentation is.  </p>
+
+<p>So how does Linux bypass segmentation for everything but privilege checking?  Here’s a table that describes the four main segments in the Kernel.</p>
+
+<img src="images/image007.png">
+
+<p>Notice that all these segments share the same base linear address.  This means that logical and linear addresses are equivalent.  This allows the Linux Kernel to use paging as the preferred technique of memory addressing.  However, despite having the same base addresses, these segments still have differing Descriptor Privilege Levels.  Thus, when attempting to access a given linear address, the segment containing the address is still relevant.  </p>
+
+<div class="sideNote">
+    <p>To access the segment descriptors for these segments, the Kernel provides programmers a set of macros which define the proper segment selector values.</p>
+    <img src="images/image008.png">
+    <p>You can find these in the file <a href="https://elixir.bootlin.com/linux/v5.8/source/arch/x86/include/asm/segment.h">/arch/x86/include/asm/segment.h</a>.</p>
+</div>
+
+<p>Now that we understand how the Kernel makes (minimal) use of segmentation for privilege checking, I want to dive into paging.  </p>
+
+<h2>Paging in Linux</h2>
+
+<p>Paging is another memory addressing technique that is preferred over segmentation by the Kernel.  Inside the processor’s memory management unit is the paging unit.  This unit handles the translation of linear addresses to physical addresses.  </p>
+
+<p>The foundational concept in paging is a page.  A page is a grouped fixed-length interval of linear addresses.  The paging unit sees RAM as partitioned into fixed-length page frames.  Each of these page frames can contain a single page of data.  Essentially, a page is just a block of data and a page frame is a place to store this block of data.  This allows a page to be stored in a page frame in RAM, then evacuated from RAM and saved to a disk, and later reloaded into a different page frame in RAM.  This is a foundational concept behind virtual memory (a topic that will be explored further in future posts).</p>
+
+<p>Here is an image which shows an example of a process’s linear address space.  </p>
+
+<img src="images/image009.png">
+
+<p>On the right we see the physical memory (RAM).  Each rectangle within the process’s linear address space on the left is a page.  Some of these are mapped to a page frame in physical memory (cached) and others are not and may be on disk instead (uncached).  Pages that aren’t backed by disk or RAM are unallocated.</p>
+
+<p>To translate a linear address in a process’s address space to its location in physical memory, the Kernel uses a series of data structures stored in memory.  These data structures are referred to as translation tables, or page tables.  The Linux Kernel configures Intel x86 processors to use a four-level paging scheme, which means that we have four layers of these translation tables.  </p>
+
+<p>Let’s look at how a linear address is split up and how these tables work.</p>
+
+<img src="images/image010.png">
+
+<p>Each process has its own set of page tables which are stored in memory.  The first layer of this paging process is the Page Global Directory (PGD) data structure.  Since 8 bits of a linear address are dedicated as an index into that process’s PGD, we know that the process’s PGD has 2^8, or 256 entries.  Each entry in a PGD points to a page frame in memory containing a Page Upper Directory (PUD).  Each entry in a PUD (of which there are 256) points to a page frame containing a Page Middle Directory (PMD).  Each PMD also has 256 entries, each of which point to a Page Table.  A Page Table also has 256 entries.  Instead of pointing to another layer of translation tables, each entry in a Page Table contains the physical address of the page frame containing the page corresponding to our linear address.   </p>
+
+<div class="sideNote">
+    <p>For those interested in seeing things directly in Kernel code, let’s look at the struct mm_struct, which contains the entry point for a process’s translation tables.  </p>
+    <img src="images/image011.png">
+    <p>As of Linux v5.8, this struct is defined in the file <a href="https://elixir.bootlin.com/linux/v5.8/source/include/linux/mm_types.h#L384">include/linux/mm_types.h</a>.  Each process has a mm_struct associated with it, called a memory descriptor.  A process’s memory descriptor is a summary of that process’s memory.  If you look inside this struct, we see a field called pgd.  This is a pointer to that process’s Page Global Directory, which is the first layer in that process’s series of translation tables.  </p>
+</div>
+
+<p>It turns out that each entry within the translation tables mentioned above isn’t just a reference to a translation table in the next level.  Instead, each entry in each table also contains the following fields:</p>
+
+<ul>
+    <li>A present flag.  If this is set, the corresponding page is in main memory.  Otherwise, the page is not in memory and a Page Fault Exception needs to be thrown</li>
+    <li>An accessed flag which is set each time the paging unit addresses the corresponding page.  This is used by the Kernel when determining which page to swap out when we need to insert a new page into memory</li>
+    <li>A dirty flag which only applies to Page Table entries (the last table in our series of translation tables).  This is set by the Kernel whenever a write operation is performed on the corresponding page.  This is also used by the Kernel when determining which page to swap out when a new page needs to be inserted into memory</li>
+    <li>A read/write flag which contains the access rights of the corresponding page.  If it is 0, the corresponding page can only be read.  If it is 1, the corresponding page can be read and written</li>
+    <li><b>A user/supervisor flag</b>.  This is the privilege level required to access the page.  If the flag is 0, the page can only be addressed when the CPL is less than 3 (Kernel Mode).  If the flag is 1, then the page always be addressed.</li>
+</ul>
+
+<p>For a more in-depth look at the structure of translation tables, checkout the file <a href="https://elixir.bootlin.com/linux/v5.8/source/arch/x86/include/asm/pgtable_types.h">arch/x86/include/asm/pgtable_types.h</a>.  </p>
+
+<p>As you may have guessed, the user/supervisor flag is what we’re interested in (and is the final piece of the privileges puzzle, as far as we’re concerned).  </p>
+
+<div class="sideNote">
+    <p>Let’s take a look at the code in the Kernel that actually performs the access check on page table entries.</p>
+    <img src="images/image012.png">
+    <p>You can find the above function in the file <a href="https://elixir.bootlin.com/linux/v5.8/source/arch/x86/include/asm/pgtable.h#L1420">/arch/x86/include/asm/pgtable.h</a>.  It takes a page table entry, ‘pteval’, and the boolean ‘write’, which descibes whether the access is a write or a read.  The variable ‘need_pte_bits’ is constructed from the bit masks defined by the macros ‘_PAGE_PRESENT’, ‘_PAGE_USER’, and ‘_PAGE_RW.’  This variable is then compared with the page table entry that was passed in as input.  If we find that the page table entry does not have these flags properly set, the function returns false and access is denied.   Sidenote: If you’re interested in the function ‘__pkru_allows_pkey’, then check out the Linux manual page for the ‘<a href="https://man7.org/linux/man-pages/man7/pkeys.7.html">pkeys(7)</a>’ system call.</p>
+</div>
+
+<h2>Quick Recap of Privilege Checking</h2>
+<ul>
+    <li>The segmentation unit loads the segment selector for the segment containing the currently executing program’s instructions into the CS register.  This will be either the kernel code segment or the user code segment.  The current privilege level (CPL) of the CPU is extracted from this segment selector.</li>
+    <li>When the currently executing process tries to access an address, the segmentation unit checks that the CPL of the CPU is less than or equal to the DPL of the segment containing the address we are accessing.  As a reminder, the DPL of a segment is stored in that segment’s descriptor, located in either the GDT or the LDT.  </li>
+    <li>The segmentation unit also makes sure the RPL, which is associated with the segment selector of the address as opposed to the segment itself, is less than or equal to the DPL of the segment associated with the logical address being accessed.  </li>
+    <li>The paging unit checks the user/supervisor flag of the page table entry associated with the page being accessing.  Assuming this flag is 0, the page can only be accessed if CPL < 3.  </li>
+
+</ul>
+
+<p>Segmentation and paging work together to provide protection in the Linux Kernel.  Access to a page will only be allowed if the segmentation privilege checks pass and then the paging privilege check passes.  </p>
+
+<h2>References</h2>
+
+<ul class="citation">
+    <li>[1] D. P. Bovet and M. Cesati, Understanding the Linux Kernel, 3rd Edition, O'Reilly Media, Inc., 2005. </li>
+    <li>[2] "Intel 8086," Wikipedia, [Online]. Available: https://en.wikipedia.org/wiki/Intel_8086. [Accessed 13 January 2021].</li>
+    <li>[3] D. P. Bovet and M. Cesati, "Figure 2-5. Translating a logical address," in Understanding the Linux Kernel, 3rd Edition, O'Reilly Media, Inc., 2005. </li>
+    <li>[4] "CPL vs. DPL vs. RPL," openwares.net, 04 December 2020. [Online]. Available: https://openwares.net/2019/02/09/cpl-vs-dpl-vs-rpl/. [Accessed 12 January 2021].</li>
+    <li>[5] "Four-level page tables merged," LWN.net, 05 January 2005. [Online]. Available: https://lwn.net/Articles/117749/. [Accessed 12 January 2021].</li>
+</ul>
+
+</div></body></html>
