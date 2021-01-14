@@ -96,8 +96,17 @@ img {
 <div style="padding: 10px;">
 
 <h3>01/13/2021</h3>
+<ul>
+    <li><a href="#intro">Introduction</a></li>
+    <li><a href="#segmentation">Segmentation</a></li>
+    <li><a href="#minimal">Minimal Use of Segmentation in the Linux Kernel</a></li>
+    <li><a href="#paging">Paging in Linux</a></li>
+    <li><a href="#recap">End Recap of Privilege Checking</a></li>
+    <li><a href="#end">End Note</a></li>
+    <li><a href="#references">References</a></li>
+</ul>
 
-<h2> Introduction </h2>
+<h2 id="intro"> Introduction </h2>
 <p> <b>The purpose of this post is to explore how the Linux Kernel implements User mode and Kernel mode privileges on the Intel x86 family of processors.  </b>  When I first learned about this topic, it was not immediately clear how paging and segmentation worked together when it came to privileges.  In fact, I incorrectly thought that segmentation was entirely disabled by the Linux Kernel, which is a somewhat true (yet misleading) statement commonly found online.  If you haven’t heard about protection rings or the concept of User mode and Kernel mode, the next paragraph should provide enough of an intro that you’ll be able to understand the rest of this post (although I’d also recommend reading <a href="https://blog.codinghorror.com/understanding-user-and-kernel-mode/">this article</a> if you have time).  </p>
 
 <div class="sideNote">
@@ -122,7 +131,7 @@ img {
 
 <p>I should also note that most of the research I’ve done into this topic was guided by the book <i>Understanding the Linux Kernel, 3rd Edition, by Daniel P. Bovet and Marco Cesati</i> [1].  If you want a more in depth look into these topics, I highly recommend reading this book, specifically chapter 2 (memory addressing).</p>
 
-<h2>Segmentation</h2>
+<h2 id="segmentation">Segmentation</h2>
 
 <p>Intel first developed segmentation in the 8086 microprocessor (1976)  [2].  The goal of segmentation was to ensure that developers split their programs into logical pieces (e.g. functions and global data).  Segmentation splits the entire range of linear memory addresses into different segments.</p>
 
@@ -185,7 +194,7 @@ img {
     <li>RPL <= DPL</li>
 </ul>
 
-<h2>Minimal Use of Segmentation in the Linux Kernel</h2>
+<h2 id="minimal">Minimal Use of Segmentation in the Linux Kernel</h2>
 
 <p>It turns out that the Linux Kernel doesn’t like to use segmentation that much.  The Linux Kernel prefers paging over segmentation as memory management turns out to be easier when all processes share the same set of linear addresses.  Paging is also much more portable across processors than segmentation is.  </p>
 
@@ -203,7 +212,7 @@ img {
 
 <p>Now that we understand how the Kernel makes (minimal) use of segmentation for privilege checking, I want to dive into paging.  </p>
 
-<h2>Paging in Linux</h2>
+<h2 id="paging">Paging in Linux</h2>
 
 <p>Paging is another memory addressing technique that is preferred over segmentation by the Kernel.  Inside the processor’s memory management unit is the paging unit.  This unit handles the translation of linear addresses to physical addresses.  </p>
 
@@ -250,7 +259,7 @@ img {
     <p>You can find the above function in the file <a href="https://elixir.bootlin.com/linux/v5.8/source/arch/x86/include/asm/pgtable.h#L1420">/arch/x86/include/asm/pgtable.h</a>.  It takes a page table entry, ‘pteval’, and the boolean ‘write’, which descibes whether the access is a write or a read.  The variable ‘need_pte_bits’ is constructed from the bit masks defined by the macros ‘_PAGE_PRESENT’, ‘_PAGE_USER’, and ‘_PAGE_RW.’  This variable is then compared with the page table entry that was passed in as input.  If we find that the page table entry does not have these flags properly set, the function returns false and access is denied.   Sidenote: If you’re interested in the function ‘__pkru_allows_pkey’, then check out the Linux manual page for the ‘<a href="https://man7.org/linux/man-pages/man7/pkeys.7.html">pkeys(7)</a>’ system call.</p>
 </div>
 
-<h2>Quick Recap of Privilege Checking</h2>
+<h2 id="recap">End Recap of Privilege Checking</h2>
 <ul>
     <li>The segmentation unit loads the segment selector for the segment containing the currently executing program’s instructions into the CS register.  This will be either the kernel code segment or the user code segment.  The current privilege level (CPL) of the CPU is extracted from this segment selector.</li>
     <li>When the currently executing process tries to access an address, the segmentation unit checks that the CPL of the CPU is less than or equal to the DPL of the segment containing the address we are accessing.  As a reminder, the DPL of a segment is stored in that segment’s descriptor, located in either the GDT or the LDT.  </li>
@@ -261,10 +270,10 @@ img {
 
 <p>Segmentation and paging work together to provide protection in the Linux Kernel.  Access to a page will only be allowed if the segmentation privilege checks pass and then the paging privilege check passes.  </p>
 
-<h2>End Note</h2>
+<h2 id="end">End Note</h2>
 <p>I hope you enjoyed this article!  As this is my first post, I'm looking for and would really appreciate any feedback you might have.  Specifically, I'm curious about what you thought about the "flow" of the article.  Did topics transition together smoothly?  Or was it a bit clunky?  Were some topics not explained enough?  Please shoot me an email (ryanstan@vt.edu) with any feedback you have!</p>
 
-<h2>References</h2>
+<h2 id="references">References</h2>
 
 <ul class="citation">
     <li>[1] D. P. Bovet and M. Cesati, Understanding the Linux Kernel, 3rd Edition, O'Reilly Media, Inc., 2005. </li>
