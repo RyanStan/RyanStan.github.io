@@ -1,0 +1,574 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html  PUBLIC '-//W3C//DTD XHTML 1.0 Strict//EN'  'http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd'><html xmlns="http://www.w3.org/1999/xhtml"><head>
+    <meta content="text/html; charset=UTF-8" http-equiv="Content-Type"/> 
+    <title>Writing an OS from Scratch: Jumping from a Bootloader to C Code</title>
+    <link href="index.rss" rel="alternate" title="RSS" type="application/rss+xml"/> 
+    <style type="text/css">
+    a:link { color: #293145; border-bottom: solid thin #293145; }
+    a:visited { color: #666; border-bottom: dotted thin #666; }
+    a:hover { color: #666; border-bottom: dotted thin #666; }
+    a:active { color: #fff; border-bottom: none; }
+    a { text-decoration: none; }
+    
+    body {
+        margin-top: 50px;
+        margin-bottom: 20px;
+        margin-left: auto;
+        margin-right: auto;
+        min-width: 40em;
+        max-width: 750px; 
+        font-family: Georgia, Cambria, 'Times New Roman', Times, serif;
+        font-size: 20px;
+        line-height: 1.4;
+    }
+    
+    h2, h3, .heading, .name {
+        color: #293145;
+        font-family: Arial, sans-serif;
+    }
+    
+    .heading, .name {
+        margin: 0;
+        text-align: right;
+    }
+    
+    .name {
+        font-size: 250%;
+        font-weight: bold;
+    }
+    
+    .me {
+        font-weight: bold;
+        font-style: inherit;
+    }
+    
+    .bibliography {
+        margin-left: 2em;
+        text-indent: -2em;
+    }
+    
+    .sideNote {
+        background-color: #d2d6fa;
+        
+        border-radius: 15px;
+        border-style: solid;
+        border-width: 5px;
+        border-color: black;
+        
+        box-shadow: 5px 5px rgba(0, 26, 98, 0.4),
+                  10px 10px rgba(0, 26, 98, 0.3),
+                  15px 15px rgba(0, 26, 98, 0.2),
+                  20px 20px rgba(0, 26, 98, 0.1),
+                  25px 25px rgba(0, 26, 98, 0.05);
+    
+    }
+    
+    .sideNote p {
+        padding-left: 1em;
+        padding-right: 1em;
+    }
+    
+    img {
+        max-width: 90%;
+        display: block;
+        margin-left: auto;
+        margin-right: auto;
+    }
+    
+    .citation {
+        list-style-type: none;
+    }
+
+    .code_file {
+        /* max-width: 1500px */
+        max-width: 110%;
+        display: block;
+        margin-left: auto;
+        margin-right: auto;
+    }
+
+    .code_block {
+        max-width: 90%;
+        display: block;
+        margin-left: auto;
+        margin-right: auto;
+        background-color: #f9f9f9;
+        border: 1px dashed #2f6fab;
+    }
+
+    .source_code {
+        font-family: monospace,Courier !important;
+        display: inline-block;
+        font-size: 16px;
+    }
+    
+    </style>
+    </head>
+        
+    <body>
+
+    <div style="float: left; padding-top: 10px; padding-bottom: 10px;">
+    <p class="name">Writing an OS from Scratch: Jumping from a Bootloader to C Code</p>
+    <p class="heading"><a href="index.html">home</a>
+    </div>
+    <br clear="all"/>
+    </div>
+    <div style="padding: 10px;">
+
+    <h3>05/09/2021</h3>
+    <ul>
+        <li><a href="#intro">Introduction</a></li>
+        <li><a href="#bootloader">A Bare-Bones Bootloader</a></li>
+        <li><a href="#compileTools">GCC Cross-Compiler</a></li>
+        <li><a href="#linker">Writing a Linker Script</a></li>
+        <li><a href="#loading">Loading Our Kernel into Memory</a></li>
+    </ul>
+
+
+    <h2 id="intro"> Introduction </h2>
+
+    <p>
+        This post is for anyone that wants to learn more about operating systems and that may even be trying to write their own, as I am.  
+    </p>
+
+    <p>
+        When I started writing my own OS for x86 (IA-32), I found plenty of online tutorials for how to write my own bootloader (a Google search for "how to write your own bootloader"
+        returns 845,000 results).  But I wasn't sure where to go once I had a bootloader that entered protected mode and printed "Hello World" to the screen.
+        What I really wanted to do was take my operating system from a single assembly file to an organized project consisting of C code.    
+    </p>
+
+    <p>
+        (REWRITE THIS PARAGRAPH AS A PRORGRESS AND THE STRUCTURE OF THE ARTICLE CHANGES) It turns out that making the jump from a bare-bones bootloader to C code isn't too complicated of a process;  I'll do my best to show you how I went about doing this.
+        I'll start by giving a quick overview of my initial bootloader and project setup.  Next, I'll split my bootloader into two files by
+        creating kernel.asm, the entry point of my kernel.  I'll show you how to load your kernel into memory and jump to it.  Finally, I'll
+        create kernel.c and show how to link it with the rest of your project.  
+    </p>
+
+    <h2 id="bootloader"> A Bare-Bones Bootloader </h2>
+
+    <p>
+        If you don't already have a simple assembly bootloader, there are a ton of great tutorials online on how to write one.
+        <a href="http://3zanders.co.uk/2017/10/13/writing-a-bootloader/">Here's one by Alex Parker (3zanders.co.uk) that I enjoyed.</a>
+        In short, your bootloader should be detectable by the BIOS and should transition the CPU from real mode to protected mode.  
+        It's ok if it doesn't do the "loading" part of 
+        bootloading yet; I'll show you how to load your kernel into memory.
+    </p>
+
+    <p>
+        <a href="https://github.com/RyanStan/ConiferOS/tree/blog_tutorial">Here was the initial structure of my project.</a>
+        <br> <br>
+        <img src="images/assmToC/initialStructure.PNG">
+        <br> <br>
+        Let's first take a look at the Makefile as it shows the tools I'm using to run my project.
+        <br> <br>
+        <img src="images/assmToC/initialMakefile.PNG">
+        <br> <br>
+
+        The goal is <i>bin/disk.img</i>.  This file is used by <a href="https://www.qemu.org/">QEMU</a> as the virtual hard drive raw disk image.
+        For now, this file is just an exact copy of <i>bin/boot.bin</i> which is created when I assemble <a href="https://github.com/RyanStan/ConiferOS/blob/cd53f9d8fd7dae329bcf0f2afb3f479de04580f4/src/boot/boot.asm"><i>src/boot/boot.asm</i></a>.
+        
+        I'm using <a href="https://www.nasm.us/">NASM</a> which is an assembler for the x86 architecture (it uses Intel syntax as opposed to AT&T).
+        By passing '-f bin' to nasm, I'm making sure that the assembler outputs a pure binary file.
+        <br> <br>
+
+        The run target uses <a href="https://www.qemu.org/">QEMU</a> to emulate an x86 machine booting up with <i>bin/disk.img</i> 
+        <a href="https://qemu-project.gitlab.io/qemu/system/invocation.html"> being used as the virtual hard drive raw disk image.</a>
+        Now let's take a look at <a href="https://github.com/RyanStan/ConiferOS/blob/cd53f9d8fd7dae329bcf0f2afb3f479de04580f4/src/boot/boot.asm"><i>src/boot/boot.asm</i></a>
+        so you have an idea of what the disk image will initially contain when passed to QEMU.  I'd like to preface this code by mentioning that 
+        I used <a href="https://www.udemy.com/course/developing-a-multithreaded-kernel-from-scratch/">Daniel McCarthy's Kernel course</a> on Udemy as a guide when writing it (which I highly recommend).
+        
+        <br><br>
+        <img class="code_file" src="images/assmToC/boot_asm_0.png">
+        <br> <br>
+
+        I made sure to heavily comment this assembly code so it's easier to understand.
+        I want to point out that no matter how you write your initial disk image / bootloader (or which tutorial you use), your 
+        disk image must be exactly 512 bytes so that it fits into one <a href="https://en.wikipedia.org/wiki/Disk_sector">sector</a>
+        and the last two bytes (the boot signature) must be 0x55AA so that the BIOS knows this is a boot sector and can 
+        load it into memory at 0x0000:0x7c00 (segment 0, address 0x7c00) (CITATION https://wiki.osdev.org/Boot_Sequence).
+
+        <br> <br>
+        
+        My bootloader does a few important things:
+        <ul>
+            <li>Sets the segmentation registers</li>
+            <li>Initializes the <a href="https://en.wikipedia.org/wiki/Global_Descriptor_Table">GDT</a></li>
+            <li>Enables <a href="https://wiki.osdev.org/Protected_Mode">protected mode</a></li>
+            <li>Sets the stack and base pointers</li>
+            <li>Enables the <a href="https://wiki.osdev.org/A20_Line">A20 line</a></li>
+        </ul>
+
+        If you want to dive deeper into my bootloader, I highly recommend browsing <a href="https://wiki.osdev.org/Expanded_Main_Page">OSDev.org</a>;  
+         They have a great section on booting and setup.  Or, make sure to check out the Udemy course that I mentioned earlier.  
+
+        <br><br>
+        
+        Here is where we start making the jump from a basic boot file contained in a single sector to an organized 
+        operating system project (with C code). 
+        Before we write any C code, and before we write assembly to load that C code into memory, we'll need to get ourselves a properly configured compiler.
+        
+        <br><br>
+
+    </p>
+
+    <h2 id="compileTools"> GCC Cross-Compiler </h2>
+
+    <p>
+        TODO: add citations and referneces to https://wiki.osdev.org/GCC_Cross-Compiler and https://wiki.osdev.org/Why_do_I_need_a_Cross_Compiler%3F
+        Unfortunately, we can't just use GCC (as it is) to compile our future C code.  To see why this is, go to your terminal and type the command 
+        'gcc -dumpmachine.'  
+        <br><br>
+        <img src="images/assmToC/gccVersion.PNG">
+        <br><br>
+        This command prints the compiler's target platform.  In my case, the target is 'x86_64-linux-gnu.'  By default, GCC generates
+        executables for the same platform that it itself was compiled on.  This isn't what we want;  We need to make sure that GCC generates 
+        executables for a generic target so that it doesn't try using any Linux libraries or headers that we haven't yet implemented for our OS.  
+        <br><br>
+
+        In the case of my operating system, I'm going to build a compiler with the generic target 'i686-elf.'  This is a bare target meant 
+        for freestanding programs on x86 32-bit machines.  For some other bare targets and an explanation of target triplets, check out this 
+        <a href=https://wiki.osdev.org/Target_Triplet>OSDev article</a>.
+
+        <br><br>
+
+        First, you'll have to download all the dependencies.  Here's a helpful screenshot from another <a href="https://wiki.osdev.org/GCC_Cross-Compiler">OSDev article</a>
+        on building a cross-compiler.  TODO: write a script to automate OR provide a docker image (CITATION https://wiki.osdev.org/GCC_Cross-Compiler)
+
+        <br><br>
+        <img src="images/assmToC/installingDepsGCC.PNG">
+        <br><br>
+
+       Next, you'll have to download, configure, and build Binutils, another dependency of GCC.  Unfortunately, 
+       we can't install Binutils through a package manager since we have to configure all the tools to have the same target platform 
+       as our cross-compiler (i686-elf).  
+       
+       There are three important tools that Binutils provides
+       (SOURCE https://gcc.gnu.org/install/build.html)
+
+       <ul>
+           <li><b>ld</b> - the GNU linker</li>
+           <li><b>as</b> - the GNU assembler </li>
+           <li><b>ar</b> - a program which can manipulate linker libraries into the target machine's format</li>
+           <li><b>ranlib</b> - generates an inded to the contents of an archive</li>
+       </ul>
+
+       Download the source code for Binutils from <a href="https://ftpmirror.gnu.org/binutils">https://ftpmirror.gnu.org/binutils</a>.
+       Once you have the latest version's archive I recommend creating a directory in your home folder called <div class="source_code">src</div> and expanding it there.
+
+       From there you'll want to add the following commands to your <div class="source_code">~/.profile</div>.  Once you add these, don't forget that you must 
+       either source them or log out and log back in.
+
+       <br><br>
+       <div class="code_block">
+           <div class="source_code">export PREFIX="$HOME/opt/cross"</div>
+           <br>
+           <div class="source_code">export TARGET=i686-elf</div>
+           <br>
+           <div class="source_code">export PATH="$PREFIX/bin:$PATH"</div>
+       </div>
+       <br><br>
+
+       Now just copy and paste the following commands from the OSDev Wiki to finish installing.  Make sure to replace x, y, and z with the version of Binutils 
+       that you downloaded.
+
+       <br><br>
+       <div class="code_block">
+           <div class="source_code">cd $HOME/src</div>
+           <br>
+           <div class="source_code">mkdir build-binutils</div>
+           <br>
+           <div class="source_code">cd build-binutils</div>
+           <br>
+           <div class="source_code">../binutils-x.y.z/configure --target=$TARGET \<br>      --prefix="$PREFIX" \<br> 
+                    --with-sysroot --disable-nls --disable-werror TODO: properly format</div>
+            <br>
+           <div class="source_code">make</div>
+           <br>
+           <div class="source_code">make install</div>
+       </div>
+       <br><br>
+
+    
+
+        Once Binutils is all set, we can install our GCC cross-compiler.  Like before, you'll want to download the source code from <a href="https://ftp.gnu.org/gnu/gcc/">https://ftp.gnu.org/gnu/gcc</a>
+        and expand it in your <div class="source_code">~/src</div> folder.  Once that's set, run the following commands (also courtesy of the OSDev Wiki).  Make sure to 
+        set x, y, and z to the correct version.
+
+        <br><br>
+        <div class="code_block">
+            <div class="source_code">cd $HOME/src</div>
+            <br><br>
+            <div class="source_code">which -- $TARGET-as || echo $TARGET-as is not in the PATH</div>
+            <br><br>
+            <div class="source_code">mkdir build-gcc</div>
+            <br><br>
+            <div class="source_code">cd build-gcc</div>
+            <br><br>
+            <div class="source_code">../gcc-x.y.z/configure --target=$TARGET \<br> --prefix="$PREFIX" --disable-nls \<br>--enable-languages=c,c++ --without-headers</div>
+            <br><br>
+            <div class="source_code">make all-gcc</div>
+            <br><br>
+            <div class="source_code">make all-target-libgcc</div>
+            <br><br>
+            <div class="source_code">make install-gcc</div>
+            <br><br>
+            <div class="source_code">make install-target-libgcc</div>
+            <br><br>
+        </div>
+        <br><br>
+
+        Now that your cross compiler is installed, just add it to your PATH variable:
+
+        <br><br>
+        <div class="code_block">
+            <div class="source_code">export PATH="$HOME/opt/cross/bin:$PATH" >> ~/.profile</div>
+            <br>
+            <div class="source_code">source ~/.profile</div>
+        </div>
+        <br><br>
+
+        You should be able to access your compiler like the following:
+
+        <br><br>
+        <img src="images/assmToC/gccCrossVersion.PNG">
+        <br><br>
+
+        Ok, congrats!  You successfully built a cross-compiler.  Let's jump right in and write some C code next.  
+
+        <h2 id="kernel_main"> C Code </h2>
+
+        From our <div class="source_code">boot.asm</div> file, we'll jump to the symbol <div class="source_code">kernel_main</div>. 
+        Thus, for now, let's just put together a (TODO: add link) simple C file that defines this symbol and does some simple arithmetic.
+
+        <br><br>
+        <img src="images/assmToC/kernel_main.PNG">
+        <br><br>
+
+        To reiterate, our goal is to compile this code, add it to our raw disk image, and load it into memory and jump to it from 
+        our bootloader.  
+        
+        This brings us to an important point.  Let's compile and link this file with the default GCC linker script settings and take a look at it.
+        To generate the exectuable, I'll be using the following target that I've added to my Makefile.
+
+        <br><br>
+        <img src="images/assmToC/bin_kernel.PNG">
+        <br><br>
+
+        Flags is defined as follows.  If you're curious about any of the flags I'm passing in, check out the <a href="https://linux.die.net/man/1/gcc">man page for GCC</a>.
+
+        <br><br>
+        <img src="images/assmToC/flags.PNG">
+        <br><br>
+
+        This is the output I get when I attempt to make the <div class="source_code">bin/kernel</div> target.
+
+        <br><br>
+        <img src="images/assmToC/compile_warning.PNG">
+        <br><br>
+
+        There are a couple problems with what I just did here and the second warning describes one of these.  Since the linker couldn't find the symbol <div class="source_code">_start</div>,
+        it gave it the address <div class="source_code">0x8048060</div>.  Why is the linker looking for this symbol?  Take a look at the following command and output.
+        
+        <br><br>
+        <img src="images/assmToC/ld_default_entry.PNG">
+        <br><br>
+
+        The <div class="source_code">--verbose</div> option to our linker shows us the default linker script.  By passing this script, to GREP, we can see the line 
+        <div class="source_code">ENTRY(_start)</div> -- TODO: CITATION https://ftp.gnu.org/old-gnu/Manuals/ld-2.9.1/html_node/ld_24.html -- This is the linker command for 
+        definining the first executable instruction in an output file.  This works fine for must user space programs in a Linux environment, but it won't work in our case since we don't 
+        define that symbol.  
+        
+        Now let's look at another instruction in the default linker script. 
+
+        <br><br>
+        <img src="images/assmToC/ld_default_out_format.PNG">
+        <br><br>
+
+        The command <div class="source_code">OUTPUT_FORMAT</div> instructs ld to format its output.  While i386 is the correct target architecture, we don't want our 
+        output to be an ELF file.  Our operating system doesn't know how to execute ELF files yet, so we want the output of the linker to be a pure binary.  
+
+        There's one last problem I want to address before we write a new linker script.  Let's create a linker script that uses the correct <div class="source_code">kernel_main</div>
+        symbol as the entry point, but let's leave the output format as an ELF file so we can look at the addresses of the symbols.  So our linker script will contain two lines:
+        <br> <br> 
+        <div class="source_code">
+            ENTRY(kernel_main) <br>
+            OUTPUT_FORMAT(elf32-i386)
+        </div>
+        <br><br>
+
+        All I'm doing to pass the script to the linker is setting the -T option on GCC and passing in the path to my linker script.  
+        Here's the output of the <a href="https://linux.die.net/man/1/nm">nm</a>tool.
+
+        <br><br>
+        <img src="images/assmToC/ld_default_out_format.PNG">
+        <br><br>
+
+        As you can see, since our linker script doesn't contain any information on where to place the different sections in memory (text, data, bss, etc...), it just defaulted 
+        to placing our <div class="source_code">kernel_main</div> symbol at address 0x00.  This isn't want we want.  Since our bootloader will load our C code into memory 
+        at 1 MB, we need our linker to create addresses relative to 1 MB.  Now let's start writing our linker script.
+
+        <br><br>
+
+        <div class="sideNote">
+            <p>
+                We'll be loading our C code into memory at 1 MB because this is where the Linux kernel loads it's protected mode code. 
+                TODO: ADD CITATION
+            </p>
+        </div>
+
+
+        <br><br>
+
+    </p>
+    
+    <h2 id="linker"> Writing a Linker Script </h2>
+
+    <p>
+        <div class="sideNote">
+            <p>
+                If you want to an introduction to linker scripts that is more in depth than I'll be covering here, I recommend 
+                <a href="http://web.mit.edu/rhel-doc/3/pdf/rhel-ld-en.pdf">"Red Hat Enteprise Linux 3.  Using ld, the Gnu Linker"</a>. --TODO: CITATION--  I found chapter 4 was very useful.
+                Especially 4.6 which is on the SECTIONS command.  
+            </p>
+        </div>
+        <br><br>
+    
+        I already alluded to the first two commands we'll need in our linker script, <div class="source_code">ENTRY(kernel_main)</div> and <div class="source_code">OUTPUT_FORMAT(binary)</div>.
+        Next we'll need to use the <div class="source_code">SECTIONS</div> command to describe the layout (addresses) of the output file.  --TODO: add citation https://ftp.gnu.org/old-gnu/Manuals/ld-2.9.1/html_chapter/ld_3.html ---
+        A section is the smallest unit of an object file that can be relocated (e.g. text, data, bss, etc...).  
+        --TODO: CITATIONhttps://www.google.com/url?sa=t&rct=j&q=&esrc=s&source=web&cd=&cad=rja&uact=8&ved=2ahUKEwjNn5OI2vbxAhVIbs0KHd9IBxgQFjABegQIDBAD&url=https%3A%2F%2Fdocs.oracle.com%2Fcd%2FE19455-01%2F806-3773%2Felf-3%2Findex.html&usg=AOvVaw31oh1o_7I5i5mmqmJkaYmc--
+        Thus, the <div class="source_code">SECTIONS</div> command describes where these units will be placed in final linked executable.  
+        <br><br>
+
+        Here's what our final linker script will look like.  I'll walk you through how everything under <div class="source_code">SECTIONS</div> works. 
+        
+        <br><br>
+        <img src="images/assmToC/linker_script.PNG">
+        <br><br>
+        
+        The special linker variable dot on line 5 contains the current output location counter.  This special variable can only be set under <div class="source_code">SECTIONS</div> and it 
+        defaults to 0.  Since we want our <div class="source_code">.text</div> section to start at 1 MB in memory, as this is where it will be loaded, we set the location counter to 
+        1 M.  Line 6 defines the output section <div class="source_code">.text</div>.  Line 7 specifies that all .text sections from all input files should be placed into this output section.  
+        The location counter automatically increases by the size of the text section.  However, since we call <div class="source_code">ALIGN(4096)</div> on the output section, we ensure that the 
+        location counter is moved to an address that is aligned with 4096 bytes.  This is the alignment that GCC expects when it compiles code.  
+        After this point you'll notice that we don't assign the dot variable again.  We're ok with each other section being relatively placed to the text section.  
+        <br><br>
+        Lastly, I made sure to create an output section <div class="source_code">.asm</div> for assembly code.  This is just an abitrarily named section that will be useful 
+        for keeping compiled C code separate from assembly code.  
+        <br><br>
+        Now that we have an idea of how this linker script works, let's use it to compile some code. 
+        Here is the updated rule I'm using to create the kernel binary with our compiled C code. 
+
+        <br><br>
+        <img src="images/assmToC/bin_kernel_linked.PNG">
+        <br><br>
+        
+        Next, we're going to want to load this code into memory and execute it.  Time to do some
+        more work with our bootloader.
+
+    </p>
+
+    <h2 id="loading"> Loading Our Kernel into Memory </h2>
+
+    <p>
+        Let's update our Makefile and add our kernel binary onto our disk image.  To do this, we can 
+        update the <div class="source_code">bin/disk.img</div> rule.  
+        
+        <br><br>
+        <img src="images/assmToC/disk_img_final.PNG">
+        <br><br>
+
+        The command <a href="https://man7.org/linux/man-pages/man1/dd.1.html">dd</a> can be used to
+        copy raw data.  Here we're using it to build up our disk image.  On line 11 the disk.img is created 
+        as an exact copy of bin/boot.bin, which is 512 bytes, or one hard disk sector.  
+        Then on line 12 we append the contents of our kernel code to the second sector of disk.img. 
+        One line 13 we read from /dev/zero which is a --TODO: CITATION-- special file that provides null characters.
+        The values we've passed to bs and count make it so that we append 512 bytes of null characters, 100 times, 
+        to our disk.img.  This is just a fancy way of making our hard disk image appear larger so it can simulate a real hard disk.
+        It also ensures that the second sector of our image is completely filled up, that way no errors occur when we copy 
+        the kernel code into memory.
+        <br><br>
+
+        Now it's time to load our kernel from the disk image into memory.  As I mentioned earlier,
+        we'll be loading our kernel at 1 MB, as this is where Linux loads its protected mode kernel code.
+        -- TODO: ADD CITATION --.  We'll be loading and jumping to our kernel from a place in our bootloader 
+        where we're already in protected mode.  This makes things a bit tricker because we can't access the 
+        BIOS routines anymore.  Thus, we can't use BIOS interrupt 0x13. This 
+        is the routine for sector-based hard disk and floppy disk reads and writes using 
+        cylinder-head-sector (CHS) addressing.  --TODO: ADD CITATION FROM WIKIPEDIA--
+        Instead, we'll have to write a driver to communicate with the external hard disks 
+        through the CPU's IO instructions.
+
+        <br><br>
+
+        If we look at the man page for 
+        <a href="https://manpages.debian.org/stretch/qemu-system-x86/qemu-system-i386.1.en.html">our QEMU emulator</a>,
+        we'll see that it lists the peripherals it simulates.
+
+        <br><br>
+        <img src="images/assmToC/qemu_peripherals.PNG">
+        <br><br>
+
+        Of interest to us is <i>'2 PCI IDE interfaces with hard disk and CD-ROM support'</i>.
+        These are the storage devices that QEMU is emulating.  Our raw disk image will be located on hard drive 0.
+        IDE stands for Integrated Device Electronics.  However
+        IDE is more commonly known as ATA (Advanced Technology Attachment). --CITATION https://www.computerhope.com/jargon/i/ide.htm-- 
+        These are standard physical interfaces for connecting storage device like hard drives to the motherboard.
+        In IDE or ATA devices, the actual hard drive controller is built right into the hard drive.  This is the controller 
+        circuit which will enable us to communicate with the hard drive from the CPU.
+        We can communicate with this controller by using the IO instructions of the CPU.
+
+        <br><br>
+        <div class="sideNote">
+            <p>
+                <b>What's the difference between ATA and IDE?</b>
+                CITATION: https://superuser.com/questions/341452/whats-the-difference-between-ata-pata-and-ide
+                IDE was the name of the original specification.  However, as the standard broadened to
+                include things like CD-ROMS, ATA was standardized.  Therefore, all ATA devices conform to the 
+                IDE standard.
+                <br><br>
+                <b>From Wikipedia:</b>
+                The first version of what is now called the ATA/ATAPI interface was developed by 
+                Western Digital under the name Integrated Drive Electronics (IDE).
+            </p>
+        </div>
+        <br><br>
+        
+        The ATA interface defines registers and commands that the disk controller understands so that we can 
+        interact with the hard drive.  <a href="http://users.utcluj.ro/~baruch/media/siee/labor/ATA-Interface.pdf">This document</a>describes the registers and commands well.
+
+        <br><br>
+
+        It's also important to be aware of  
+         <a href="https://en.wikipedia.org/wiki/Logical_block_addressing">logical block addressing</a>.
+        LBA is defined in the ATA standard and is an improved way of addressing blocks.  With CHS addressing,
+        blocks of a disk are reffered to by a tuple consisting of a cylinder, a head, and a sector.
+        However, with LBA addressing, each block is referred to by a simple index.  This makes things much easier 
+        for us (the programmers).
+
+        <br><br>
+        Now, here's the code I used to interact with hard disk and to load our kernel into memory.
+        For brevity, I won't describe the code in detail here.  Instead, you should check out the comments
+        that I wrote alongside it.
+        Once again, I'll mention that this code is derived from 
+        <a href="https://www.udemy.com/course/developing-a-multithreaded-kernel-from-scratch/">Daniel McCarthy's Operating System course on Udemy</a>, 
+        and it is publically available on his <a href="https://github.com/nibblebits/PeachOS">Github page</a>.
+
+  
+
+
+
+
+    </p>
+
+
+
+    
+
+    
+
+
+
+
+    TODO: need to go back and change all references to qemu-x86 to qemu-i686
+
+    </div></body></html>
