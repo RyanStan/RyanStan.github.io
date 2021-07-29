@@ -121,6 +121,9 @@
         <li><a href="#compileTools">GCC Cross-Compiler</a></li>
         <li><a href="#linker">Writing a Linker Script</a></li>
         <li><a href="#loading">Loading Our Kernel into Memory</a></li>
+        <li><a href="#gdb">Using GDB to Make Sure Things Worked</a></li>
+        <li><a href="#conclusion">Conclusion</a></li>
+
     </ul>
 
 
@@ -546,22 +549,127 @@
         for us (the programmers).
 
         <br><br>
-        Now, here's the code I used to interact with hard disk and to load our kernel into memory.
+        Now, here's the code I used to interact with the hard disk and to load our kernel into memory.
         For brevity, I won't describe the code in detail here.  Instead, you should check out the comments
         that I wrote alongside it.
         Once again, I'll mention that this code is derived from 
         <a href="https://www.udemy.com/course/developing-a-multithreaded-kernel-from-scratch/">Daniel McCarthy's Operating System course on Udemy</a>, 
         and it is publically available on his <a href="https://github.com/nibblebits/PeachOS">Github page</a>.
 
-  
-
-
-
+        <br><br>
+        
+        <a href="https://github.com/RyanStan/ConiferOS/blob/6f06b60ee2f4382ee6ee26610421d4ce492419c3/src/boot/boot.asm#L88">
+            Check out <div class="source_code">load_kernel</div> in my bootloader.
+        </a>
 
     </p>
 
+    <h2 id="gdb"> Using GDB to Make Sure Things Worked </h2>
+
+    <p>
+        At this point, things should be working.  Now we need to make sure that things worked as expected and that our code has entered 
+        the <span class="source_code">kernel_main</span> function in kernel.c.  If we had a print function, we could just print to the terminal from 
+        <span class="source_code">kernel_main</span> and we would know that things were working.  Instead, since this isn't the case, we'll use GDB 
+        remote debugging to step through our code and make sure things are working as expected.
+        <br><br>
+        QEMU supports gdb's remote-connection facility via <a href="https://man7.org/linux/man-pages/man1/gdbserver.1.html">gdbserver</a>.  
+        This allows us to remotely debug the code that QEMU is executing. 
+        I'll walk you through how to do this.
+
+        <br><br>
+
+        First, we'll want to update our Makefile so that the compilation and linking of kernel.c to kernel.bin is actually done in two steps.  We want 
+        access to kernel.o, the intermediary object file, because GDB can load the symbol table from this file, which will make debugging easier for us.  
+        This will allow us to set breakpoints in our kernel.c code by referring to symbols like <span class="source_code">kernel_main</span>.  
+        Here is my additional Makefile rule for <span class="source_code">build/kernel.o</span>
+
+        <br><br>
+        <img src="images/assmToC/kernel_targets.PNG">
+        <br><br>
+
+        <a href="https://github.com/RyanStan/ConiferOS/blob/blog_tutorial/Makefile">Here is my final Makefile</a>.
+
+        <br><br>
+
+        Next, install Tmux (if you don't already have it) and create split panes (ctrl+b then %).  In one pane, run the following command:
+
+        <br><br>
+        <span class="source_code">qemu-system-i386 -s -S -drive file=bin/disk.img,index=0,media=disk,format=raw</span>. 
+        <br><br>
+
+        The -s option opens a gdbserver on the QEMU machine at TCP port 1234.   
+        The -S option makes sure that the CPU doesn't start at startup.  This allows us to start the CPU from our local gdb so that we don't miss anything.  
+        <br><br>
+
+        Now, in our other pane, run gdb.  Here are the first two commands you'll use inside gdb:
+
+        <br><br>
+        <span class="source_code">
+            add-symbol-file build/kernel.o 0x100000
+            <br>
+            target remote localhost:1234
+        </span>
+        <br><br>
+
+        The first command adds the symbol table from kernel.o to our debugging session.  The argument 0x100000 is just the memory address at which 
+        the file's text section will be loaded, so 1 MB in our case.  The second command connects the gdb session to the gdbserver running inside QEMU.
+        
+        <br><br>
+
+        Here is what your terminal should look like.  
+
+        <br><br>
+        <img src="images/assmToC/start_debugging.PNG">
+        <br><br>
+
+        Next, set a breakpoint in <span class="source_code">kernel_main</span> and then run continue.  You should hit the breakpoint.
+        If you do, that means your bootloader correctly loaded your kernel.bin file into memory and jumped to it.  Congrats!
+
+        <br><br>
+        <img src="images/assmToC/start_debugging.PNG">
+        <br><br>
+
+        And here is a screenshot of me stepping through the code and printing out the local variables.  You'll notice the line number is printed on the left after next 
+        and the actual line contents is printed on the right.
+
+        <br><br>
+        <img src="images/assmToC/gdb_things_working.PNG">
+        <br><br>
+
+    </p>
+
+    <h2 id="conclusion">Conclusion</h2>
+        I was always amazed and confused by the startup stages of the Linux Kernel.  How the kernel went from pure assembly, to C code, was always a mystery to me.    
+        Doesn't compiled C code rely on the Linux Kernel for startup routines and memory management?  
+        How does the linker know where in memory to place certain symbols?  
+
+        <br><br>
+        
+        These were just some of the questions I had when I started writing my own operating system.  However, I know realize that things 
+        aren't as complicated as I once thought.  In summary, to go from assembly to C code, you must
+
+        <ul>
+            <li>compile your C code with a properly configured cross compiler </li>
+            <li>write a linker script that (a) properly aligns your sections with where you C code will be loaded into memory and that (b) outputs a binary file instead of an ELF</li>
+            <li>load your code into a fixed point in memory and jump to it from your bootloader</li>
+        </ul>
+
+        And that's it!  I hope you enjoyed this article.  If you have any questions or any feedback, feel free to reach out to me at ryanstan@vt.edu.
+    <p>
+
+    </p>
+
+   
 
 
+    7/25/21 What's next (should be done by Friday):
+    -write gdb debugging section DONE
+    -Finish commenting bootloader code so that it's easy to understand 
+    -Link to bootloader code from this post  DONE
+    -Summarize the post in a conclusion section  DONE
+    -Add citations 
+    -Make sure it looks good 
+    -Upload
     
 
     
