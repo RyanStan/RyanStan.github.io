@@ -161,7 +161,7 @@
     </p>
 
     <p>
-        <a href="https://github.com/RyanStan/ConiferOS/tree/blog_tutorial">Here was the initial structure of my project.</a>
+        <a href="https://github.com/RyanStan/ConiferOS/tree/6d21f67ca3e3c94756e4f01ae83e187660186e55">Here was the initial structure of my project.</a>
 
         <br> <br>
         <img src="images/assmToC/initialStructure.PNG">
@@ -174,7 +174,7 @@
         <br> <br>
 
         The goal is <span class="source_code">bin/disk.img</span>.  This file is used by <a href="https://www.qemu.org/">QEMU</a> as the virtual hard drive raw disk image.
-        For now, this file is an exact copy of <span class="source_code">bin/boot.bin</span> which is created when I assemble <a href="https://github.com/RyanStan/ConiferOS/blob/cd53f9d8fd7dae329bcf0f2afb3f479de04580f4/src/boot/boot.asm"><span class="source_code">src/boot/boot.asm</span></a>.
+        For now, this file is an exact copy of <span class="source_code">bin/boot.bin</span> which is created when I assemble <span class="source_code">src/boot/boot.asm</span></a>.
         
         I'm using <a href="https://www.nasm.us/">NASM</a> which is an assembler for the x86 architecture (it uses Intel syntax as opposed to AT&T).
         By passing <span class="source_code">-f bin</span> to nasm, I'm making sure that the assembler outputs a pure binary file.
@@ -182,6 +182,11 @@
 
         The run target uses QEMU to emulate an x86 machine booting up with <span class="source_code">bin/disk.img</span> 
         <a href="https://qemu-project.gitlab.io/qemu/system/invocation.html"> as the virtual hard drive raw disk image.</a>
+        Later in this post, you may notice that I switch to using <span class="source_code">qemu-system-i386</span> instead of <span class="source_code">qemu-system-x86_64</span>. 
+        The former is targeted for 32-bit x86 architectures while the latter is targeted for 64-bit x86 architectures.  While this won't make a difference in this post,
+        later on you could run into trouble writing 32-bit code while using the 64-bit emulator.
+
+        <br><br>
         Now let's take a look at <a href="https://github.com/RyanStan/ConiferOS/blob/cd53f9d8fd7dae329bcf0f2afb3f479de04580f4/src/boot/boot.asm"><span class="source_code">src/boot/boot.asm</span></a>
         so you have an idea of what the disk image will initially contain when passed to QEMU.  I'd like to preface this code by mentioning that 
         I used <a href="https://www.udemy.com/course/developing-a-multithreaded-kernel-from-scratch/">Daniel McCarthy's Operating System course</a> on Udemy as a guide when writing it (which I highly recommend).
@@ -263,9 +268,9 @@
        <br><br>
        <div class="code_block">
            <div class="source_code">export PREFIX="$HOME/opt/cross"</div>
-           <br>
+           <br><br>
            <div class="source_code">export TARGET=i686-elf</div>
-           <br>
+           <br><br>
            <div class="source_code">export PATH="$PREFIX/bin:$PATH"</div>
        </div>
        <br><br>
@@ -276,16 +281,16 @@
        <br><br>
        <div class="code_block">
            <div class="source_code">cd $HOME/src</div>
-           <br>
+           <br><br>
            <div class="source_code">mkdir build-binutils</div>
-           <br>
+           <br><br>
            <div class="source_code">cd build-binutils</div>
-           <br>
-           <div class="source_code">../binutils-x.y.z/configure --target=$TARGET \<br>      --prefix="$PREFIX" \<br> 
-                    --with-sysroot --disable-nls --disable-werror TODO: properly format</div>
-            <br>
+           <br><br>
+           <div class="source_code">../binutils-x.y.z/configure --target=$TARGET \<br> --prefix="$PREFIX" \<br> 
+                    --with-sysroot --disable-nls --disable-werror</div>
+            <br><br>
            <div class="source_code">make</div>
-           <br>
+           <br><br>
            <div class="source_code">make install</div>
        </div>
        <br><br>
@@ -324,7 +329,7 @@
         <br><br>
         <div class="code_block">
             <div class="source_code">export PATH="$HOME/opt/cross/bin:$PATH" >> ~/.profile</div>
-            <br>
+            <br><br>
             <div class="source_code">source ~/.profile</div>
         </div>
         <br><br>
@@ -409,9 +414,6 @@
 
         <br><br>
         <img src="images/assmToC/symbols_no_link.PNG">
-        <br><br>
-
-        ---TODO: it would be less confusing if the executable wasn't .o format---
         <br><br>
 
         Since our linker script doesn't contain any information on where to place the different output sections in memory (text, data, bss, etc...), it just defaulted 
@@ -604,7 +606,7 @@
         Next, install Tmux (if you don't already have it) and create split panes (ctrl+b then %).  In one pane, run the following command:
 
         <br><br>
-        <span class="source_code">qemu-system-i386 -s -S -drive file=bin/disk.img,index=0,media=disk,format=raw</span>. 
+        <span class="source_code">qemu-system-i386 -s -S -drive file=bin/disk.img,index=0,media=disk,format=raw</span> 
         <br><br>
 
         The -s option opens a gdbserver on the QEMU machine at TCP port 1234.   
@@ -632,18 +634,10 @@
         <br><br>
         <img src="images/assmToC/start_debugging.PNG">
         <br><br>
-        --TODO: MAKE THIS IMAGE LOOK BETTER--
-        <br><br>
 
         Next, set a breakpoint in <span class="source_code">kernel_main</span> and then run continue.  You should hit the breakpoint.
         If you do, that means your bootloader correctly loaded your <span class="source_code">kernel.bin</span> file into memory and jumped to it.  Congrats!
-
-        <br><br>
-        <img src="images/assmToC/start_debugging.PNG">
-        <br><br>
-
-        And here is a screenshot of me stepping through the code and printing out the local variables.  You'll notice that the line number is printed on the left 
-        and the actual line contents is printed on the right.
+        Here's a screenshot of me hitting the breakpoint, and then stepping through the code in <span class="source_code">kernel.c</span> and printing out the local variables. 
 
         <br><br>
         <img src="images/assmToC/gdb_things_working.PNG">
@@ -691,9 +685,11 @@
     </ul>
 
 
-    TODO: need to go back and change all references to qemu-x86 to qemu-i686
-          redo split screen pictures 
-          change my makefile at one point to not output an object file when I'm exploring with nm 
-          fill in citations (--should be done--)
+    TODO: need to go back and change all references to qemu-x86 to qemu-i686 (--done--)
+          redo split screen pictures (--done--)
+          change my makefile at one point to not output an object file when I'm exploring with nm (--done--)
+          fill in citations (-- done--)
+          make sure links point to correct places
+          update comments in my ata code
 
     </div></body></html>
