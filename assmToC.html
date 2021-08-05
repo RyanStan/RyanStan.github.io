@@ -541,7 +541,7 @@
                 <br><br>
                 <b>From Wikipedia:</b>
                 The first version of what is now called the ATA/ATAPI interface was developed by 
-                Western Digital under the name Integrated Drive Electronics (IDE). --ADD CITATION #10--
+                Western Digital under the name Integrated Drive Electronics (IDE) [10].
             </p>
         </div>
         <br><br>
@@ -559,17 +559,19 @@
         for us (the programmers).
 
         <br><br>
-        Here's the code I use to interact with the hard disk and to load our kernel into memory.
-        For brevity, I won't describe the code in detail here.  Instead, you should check out the comments
-        that I wrote alongside it.
+        For brevity, I won't walk you through the code I used to interact with the hard disk and to load our kernel into memory.  Instead, you should check out the comments
+        that I wrote alongside it.  However, I don't think it's necessary to understand it in its entirety.
+        Having a high level understanding of the ATA interface and what the code is trying to accomplish is enough for the purpose of this post.
+
+        <br><br>
         Once again, I'll mention that this code is derived from 
         <a href="https://www.udemy.com/course/developing-a-multithreaded-kernel-from-scratch/">Daniel McCarthy's Operating System course on Udemy</a>, 
         and it is publically available on his <a href="https://github.com/nibblebits/PeachOS">Github page</a>.
 
         <br><br>
         
-        <a href="https://github.com/RyanStan/ConiferOS/blob/6f06b60ee2f4382ee6ee26610421d4ce492419c3/src/boot/boot.asm#L88">
-            Check out <span class="source_code">load_kernel</span> in my bootloader on Github.
+        <a href="https://github.com/RyanStan/ConiferOS/blob/fe94873c50cae8f29adbebf4ff4ca4074f8ef245/src/boot/boot.asm#L88">
+            Check out the <span class="source_code">load_kernel</span> function in my bootloader on Github.
         </a>
 
     </p>
